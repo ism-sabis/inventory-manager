@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 )
 
-var serveDir = flag.String("path", ".", "Directory to serve")
+var serveDir = flag.String("path", "web", "Directory to serve")
 var allowRemote = flag.Bool("remote", true, "Allow remote connections")
 var port = flag.Int("port", 8000, "Port to listen on")
 
