@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Checking Out</title>
+    <style>
+        body {
+            background-color: #121212;
+            color: #ffffff;
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        .container {
+            max-width: 600px;
+            margin: auto;
+        }
+        input, button {
+            background-color: #333;
+            color: #fff;
+            border: 1px solid #555;
+            padding: 12px;
+            margin: 10px 0;
+            font-size: 16px;
+            width: 100%;
+        }
+        button {
+            cursor: pointer;
+            font-weight: bold;
+        }
+        h1, h2 {
+            text-align: center;
+            font-size: 24px;
+        }
+        #itemImage {
+            display: block;
+            margin: 20px auto;
+            border: 2px solid #fff;
+            width: 100%;
+            max-width: 300px;
+            height: auto;
+        }
+    </style>
+    <script>
+        window.onload = function() {
+            document.getElementById("quantityCheckout").value = 1;
+            document.getElementById("project").value = new Date().toISOString().split('T')[0];
+        };
+
+        function confirmAction(action, formId) {
+            let message = action === 'reset' ? "Are you sure you want to reset this form?" : "Are you sure you want to submit?";
+            if (confirm(message)) {
+                if (action === 'reset') {
+                    document.getElementById(formId).reset();
+
+                    // Reapply default values after reset
+                    if (formId === "checkoutForm") {
+                        document.getElementById("project").value = new Date().toISOString().split('T')[0];
+                        document.getElementById("quantityCheckout").value = 1;
+                    }
+                } else if (action === 'submit') {
+                    document.getElementById(formId).submit();
+                }
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <div class="container">
+        <h1>📦 Checkout Item</h1>
+
+        <form id="checkoutForm">
+            <h2>Item Details</h2>
+            <label for="search">Item SKU Submit:</label>
+            <input type="text" id="search" name="search" required>
+            <button type="submit">🔎 Search</button>
+
+            <label for="quantityCheckout">Quantity:</label>
+            <input type="number" id="quantityCheckout" name="quantity" min="1" required>
+
+            <label for="project">Project:</label>
+            <input type="text" id="project" name="project" required>
+
+            <button type="button" onclick="confirmAction('submit', 'checkoutForm')">✅ Checkout</button>
+            <button type="button" onclick="confirmAction('reset', 'checkoutForm')">🔄 Reset</button>
+        </form>
+
+        <h3>Details of Item</h3>
+        <h5>Item Description:<br> SKU:<br></h5>
+        <img id="itemImage" src="image.jpg" alt="Item Image">
+    </div>
+
+</body>
+</html>
