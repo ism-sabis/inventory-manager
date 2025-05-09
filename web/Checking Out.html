@@ -70,10 +70,10 @@
     <div class="container">
         <h1>📦 Checkout Item</h1>
 
-        <form id="checkoutForm">
+        <form id="checkoutForm" onsubmit="confirmAction('submit', 'checkoutForm')" method="GET" action="/">
             <h2>Item Details</h2>
             <label for="search">Item SKU Submit:</label>
-            <input type="text" id="search" name="search" required>
+            <input type="text" id="search" name="sku" value="{{.Sku}}" required>
             <button type="submit">🔎 Search</button>
 
             <label for="quantityCheckout">Quantity:</label>
@@ -87,7 +87,7 @@
         </form>
 
         <h3>Details of Item</h3>
-        <h5>Item Description:<br> SKU:<br></h5>
+        <h5>Item Description:<br> SKU: {{.Sku}}<br></h5>
         <img id="itemImage" src="image.jpg" alt="Item Image">
     </div>
 

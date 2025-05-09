@@ -67,7 +67,7 @@
         <form id="addItemForm">
             <h2>Item Details</h2>
             <label for="sku">SKU:</label>
-            <input type="text" id="sku" name="sku" required>
+            <input type="text" id="skuInput" name="sku" value="{{.Sku}}" required>
 
            <!-- <label for="title">Title:</label>
             <input type="text" id="title" name="title" required> -->
@@ -80,7 +80,7 @@
         </form>
 
         <h3>Details of Item</h3>
-        <h5>Item Description:<br> SKU:<br></h5>
+        <h5>Item Description:<br> SKU: {{.Sku}}<br></h5>
         <img id="itemImage" src="image.jpg" alt="Item Image">
     </div>
 

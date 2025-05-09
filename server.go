@@ -3,20 +3,28 @@ package main
 import (
 	"flag"
 	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 )
 
-var serveDir = flag.String("path", "web", "Directory to serve")
-var allowRemote = flag.Bool("remote", true, "Allow remote connections")
-var port = flag.Int("port", 8000, "Port to listen on")
+var serveDir = flag.String("path", ".", "Directory to serve")
+var allowRemote = flag.Bool("remote", false, "Allow remote connections")
+var port = flag.Int("port", 1234, "Port to listen on")
 
-// health check handler
-func healthCheckHandler(w http.ResponseWriter, req *http.Request) {
-	w.Header().Set("Content-Type", "text/plain")
-	w.Write([]byte("Let's go Huskies!"))
+// indexHandler serves the index.html file
+type IndexData struct {
+	Sku string
+}
+
+func indexHandler(w http.ResponseWriter, req *http.Request) {
+	tmpl := template.Must(template.ParseFiles("web/Combined.html"))
+	queryParams := req.URL.Query()
+	sku := queryParams.Get("sku")
+	w.Header().Set("Content-Type", "text/html")
+	tmpl.Execute(w, IndexData{Sku: sku})
 }
 
 func main() {
@@ -36,10 +44,10 @@ func main() {
 	serveAbsDir = filepath.Clean(serveAbsDir)
 
 	// Bind file server
-	http.Handle("/", http.FileServer(http.Dir(serveAbsDir)))
+	http.Handle("/web", http.FileServer(http.Dir(serveAbsDir)))
 
 	// Bind health check
-	http.HandleFunc("/ping", healthCheckHandler)
+	http.HandleFunc("/", indexHandler)
 
 	// Get hostname
 	var hostname = "localhost"
