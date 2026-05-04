@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 var serveDir = flag.String("path", "web", "Directory to serve")
@@ -16,6 +17,32 @@ var dbPath = flag.String("db", "inventory.db", "Path to SQLite database file")
 var dataDir = flag.String("data", "data", "Directory for CSV data files")
 var doExport = flag.Bool("export", false, "Export database to CSV files and exit")
 var doImport = flag.Bool("import", false, "Import CSV files into database and exit")
+
+var exportChan chan struct{}
+
+func initAutoExport(dataDir string) {
+	exportChan = make(chan struct{}, 1)
+	go func() {
+		for range exportChan {
+			time.Sleep(5 * time.Second)
+			if err := exportData(db, dataDir); err != nil {
+				log.Printf("Auto-export error: %v", err)
+			}
+			// Drain any signals that arrived during the export
+			select {
+			case <-exportChan:
+			default:
+			}
+		}
+	}()
+}
+
+func notifyExport() {
+	select {
+	case exportChan <- struct{}{}:
+	default:
+	}
+}
 
 func healthCheckHandler(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
@@ -50,6 +77,8 @@ func main() {
 		}
 		return
 	}
+
+	initAutoExport(*dataDir)
 
 	var bindAddr = fmt.Sprintf("127.0.0.1:%d", *port)
 	if *allowRemote {

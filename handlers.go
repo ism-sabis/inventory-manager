@@ -74,6 +74,7 @@ func handleAddStock(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	notifyExport()
 	writeJSON(w, http.StatusOK, item)
 }
 
@@ -114,6 +115,7 @@ func handleCheckout(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	notifyExport()
 	writeJSON(w, http.StatusOK, item)
 }
 
@@ -150,6 +152,7 @@ func handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	notifyExport()
 	writeJSON(w, http.StatusCreated, order)
 }
 
@@ -210,6 +213,7 @@ func handleReceiveLine(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	notifyExport()
 	writeJSON(w, http.StatusOK, order)
 }
 
