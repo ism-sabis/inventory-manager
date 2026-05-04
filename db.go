@@ -202,7 +202,12 @@ func upsertProduct(db *sql.DB, sku, barcode, title, imageURL, productURL string)
 			title = CASE WHEN excluded.title = '' THEN items.title ELSE excluded.title END,
 			image_url = CASE WHEN excluded.image_url = '' THEN items.image_url ELSE excluded.image_url END,
 			product_url = CASE WHEN excluded.product_url = '' THEN items.product_url ELSE excluded.product_url END,
-			updated_at = datetime('now')
+			updated_at = CASE WHEN
+				items.barcode != (CASE WHEN excluded.barcode = '' THEN items.barcode ELSE excluded.barcode END) OR
+				items.title != (CASE WHEN excluded.title = '' THEN items.title ELSE excluded.title END) OR
+				items.image_url != (CASE WHEN excluded.image_url = '' THEN items.image_url ELSE excluded.image_url END) OR
+				items.product_url != (CASE WHEN excluded.product_url = '' THEN items.product_url ELSE excluded.product_url END)
+			THEN datetime('now') ELSE items.updated_at END
 	`, sku, barcode, title, imageURL, productURL)
 	return err
 }
