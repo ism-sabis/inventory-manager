@@ -24,6 +24,7 @@ type Checkout struct {
 	SKU       string `json:"sku"`
 	Quantity  int    `json:"quantity"`
 	Project   string `json:"project"`
+	Action    string `json:"action"`
 	CreatedAt string `json:"created_at"`
 }
 
@@ -86,6 +87,9 @@ func openDB(path string) (*sql.DB, error) {
 }
 
 func migrate(db *sql.DB) error {
+	// Add action column to existing checkouts tables
+	db.Exec("ALTER TABLE checkouts ADD COLUMN action TEXT NOT NULL DEFAULT 'checkout'")
+
 	_, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS items (
 			sku         TEXT PRIMARY KEY,
@@ -105,6 +109,7 @@ func migrate(db *sql.DB) error {
 			sku         TEXT NOT NULL REFERENCES items(sku),
 			quantity    INTEGER NOT NULL,
 			project     TEXT NOT NULL,
+			action      TEXT NOT NULL DEFAULT 'checkout',
 			created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 		);
 
@@ -204,7 +209,13 @@ func upsertProduct(db *sql.DB, sku, barcode, title, imageURL, productURL string)
 
 func addStock(db *sql.DB, sku string, quantity int) (*Item, error) {
 	sku = strings.ToUpper(strings.TrimSpace(sku))
-	_, err := db.Exec(`
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec(`
 		INSERT INTO items (sku, quantity)
 		VALUES (?, ?)
 		ON CONFLICT(sku) DO UPDATE SET
@@ -212,6 +223,15 @@ func addStock(db *sql.DB, sku string, quantity int) (*Item, error) {
 			updated_at = datetime('now')
 	`, sku, quantity)
 	if err != nil {
+		return nil, err
+	}
+
+	_, err = tx.Exec("INSERT INTO checkouts (sku, quantity, project, action) VALUES (?, ?, '', 'add')", sku, quantity)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return getItem(db, sku)
@@ -249,7 +269,7 @@ func checkoutStock(db *sql.DB, sku string, quantity int, project string) (*Item,
 
 func getCheckouts(db *sql.DB, sku, project string) ([]Checkout, error) {
 	sku = strings.ToUpper(strings.TrimSpace(sku))
-	query := "SELECT id, sku, quantity, project, created_at FROM checkouts WHERE 1=1"
+	query := "SELECT id, sku, quantity, project, action, created_at FROM checkouts WHERE 1=1"
 	var args []any
 	if sku != "" {
 		query += " AND sku = ?"
@@ -270,7 +290,7 @@ func getCheckouts(db *sql.DB, sku, project string) ([]Checkout, error) {
 	var checkouts []Checkout
 	for rows.Next() {
 		var c Checkout
-		if err := rows.Scan(&c.ID, &c.SKU, &c.Quantity, &c.Project, &c.CreatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.SKU, &c.Quantity, &c.Project, &c.Action, &c.CreatedAt); err != nil {
 			return nil, err
 		}
 		checkouts = append(checkouts, c)
@@ -461,8 +481,21 @@ func onOrderQuantity(db *sql.DB, sku string) (int, error) {
 }
 
 func allOrders(db *sql.DB) ([]PurchaseOrder, error) {
-	orders, err := listOrders(db, "")
+	rows, err := db.Query("SELECT id, name, status, created_at, updated_at FROM purchase_orders ORDER BY id")
 	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var orders []PurchaseOrder
+	for rows.Next() {
+		var po PurchaseOrder
+		if err := rows.Scan(&po.ID, &po.Name, &po.Status, &po.CreatedAt, &po.UpdatedAt); err != nil {
+			return nil, err
+		}
+		orders = append(orders, po)
+	}
+	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	for i := range orders {
@@ -476,7 +509,7 @@ func allOrders(db *sql.DB) ([]PurchaseOrder, error) {
 }
 
 func allCheckouts(db *sql.DB) ([]Checkout, error) {
-	rows, err := db.Query("SELECT id, sku, quantity, project, created_at FROM checkouts ORDER BY created_at")
+	rows, err := db.Query("SELECT id, sku, quantity, project, action, created_at FROM checkouts ORDER BY created_at, sku, id")
 	if err != nil {
 		return nil, err
 	}
@@ -485,7 +518,7 @@ func allCheckouts(db *sql.DB) ([]Checkout, error) {
 	var checkouts []Checkout
 	for rows.Next() {
 		var c Checkout
-		if err := rows.Scan(&c.ID, &c.SKU, &c.Quantity, &c.Project, &c.CreatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.SKU, &c.Quantity, &c.Project, &c.Action, &c.CreatedAt); err != nil {
 			return nil, err
 		}
 		checkouts = append(checkouts, c)

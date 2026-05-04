@@ -100,14 +100,21 @@ func importData(db *sql.DB, dataDir string) error {
 			if len(row) < 4 {
 				continue
 			}
-			sku, project, createdAt := row[0], row[2], row[3]
+			sku, project := row[0], row[2]
 			qty, err := strconv.Atoi(row[1])
 			if err != nil {
 				log.Printf("audit-log.csv line %d: invalid quantity %q", i+2, row[1])
 				continue
 			}
-			_, err = db.Exec("INSERT INTO checkouts (sku, quantity, project, created_at) VALUES (?, ?, ?, ?)",
-				sku, qty, project, createdAt)
+			// Support both old format (SKU,Qty,Project,Timestamp) and new (SKU,Qty,Project,Action,Timestamp)
+			action := "checkout"
+			createdAt := row[3]
+			if len(row) >= 5 {
+				action = row[3]
+				createdAt = row[4]
+			}
+			_, err = db.Exec("INSERT INTO checkouts (sku, quantity, project, action, created_at) VALUES (?, ?, ?, ?, ?)",
+				sku, qty, project, action, createdAt)
 			if err != nil {
 				return fmt.Errorf("audit-log.csv line %d: %w", i+2, err)
 			}
@@ -278,12 +285,13 @@ func exportAuditLog(db *sql.DB, dataDir string) error {
 	defer f.Close()
 
 	w := csv.NewWriter(f)
-	w.Write([]string{"SKU", "Quantity", "Project", "Timestamp"})
+	w.Write([]string{"SKU", "Quantity", "Project", "Action", "Timestamp"})
 	for _, c := range checkouts {
 		w.Write([]string{
 			c.SKU,
 			strconv.Itoa(c.Quantity),
 			c.Project,
+			c.Action,
 			c.CreatedAt,
 		})
 	}
