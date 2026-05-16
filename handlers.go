@@ -3,8 +3,10 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 var db *sql.DB
@@ -229,4 +231,100 @@ func handleGetCheckouts(w http.ResponseWriter, r *http.Request) {
 		checkouts = []Checkout{}
 	}
 	writeJSON(w, http.StatusOK, checkouts)
+}
+
+// Administrative: trigger a manual goBILDA refresh (runs async)
+func handleAdminRefresh(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		writeError(w, http.StatusMethodNotAllowed, "POST required")
+		return
+	}
+
+	go func() {
+		log.Printf("Manual goBILDA refresh triggered via web UI")
+		if err := refreshGobildaCatalog(*dataDir, *gobildaResultsDir, *gobildaScraperDir, *gobildaScraperCommand, *gobildaScraperArgs); err != nil {
+			log.Printf("goBILDA refresh failed: %v", err)
+			return
+		}
+		// Preserve custom products before reloading
+		customProducts, err := getCustomProducts(db)
+		if err != nil {
+			log.Printf("goBILDA refresh: failed to preserve custom products: %v", err)
+		}
+		if err := loadProducts(db, *dataDir); err != nil {
+			log.Printf("goBILDA reload failed: %v", err)
+			return
+		}
+		// Restore custom products after reload
+		if customProducts != nil {
+			if err := restoreCustomProducts(db, customProducts); err != nil {
+				log.Printf("goBILDA refresh: failed to restore custom products: %v", err)
+			}
+		}
+		log.Printf("goBILDA refresh completed successfully")
+	}()
+
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "started"})
+}
+// Create a custom product with full metadata (not from scraper).
+func handleCreateCustomProduct(w http.ResponseWriter, r *http.Request) {
+    if r.Method != "POST" {
+        writeError(w, http.StatusMethodNotAllowed, "POST required")
+        return
+    }
+
+    var req struct {
+        SKU        string   `json:"sku"`
+        Barcode    string   `json:"barcode"`
+        Title      string   `json:"title"`
+        Images     []string `json:"images"`
+        ProductURL string   `json:"product_url"`
+		Quantity   int      `json:"quantity"`
+		PackSize   int      `json:"pack_size"`
+    }
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        writeError(w, http.StatusBadRequest, "invalid JSON")
+        return
+    }
+    if req.SKU == "" {
+        writeError(w, http.StatusBadRequest, "sku is required")
+        return
+    }
+
+    // Normalize SKU to uppercase
+    req.SKU = strings.ToUpper(strings.TrimSpace(req.SKU))
+
+    // Use first image as primary image_url
+    imageURL := ""
+    if len(req.Images) > 0 && req.Images[0] != "" {
+        imageURL = req.Images[0]
+    }
+	imagesJSON := ""
+	if len(req.Images) > 0 {
+		if b, err := json.Marshal(req.Images); err == nil {
+			imagesJSON = string(b)
+		}
+	}
+
+    // Upsert product as custom: create or update if already exists, mark as custom
+	if err := upsertCustomProduct(db, req.SKU, req.Barcode, req.Title, imageURL, imagesJSON, req.ProductURL, req.PackSize); err != nil {
+        writeError(w, http.StatusInternalServerError, err.Error())
+        return
+    }
+
+    // If quantity is provided, add stock
+    var item *Item
+    var err error
+    if req.Quantity > 0 {
+        item, err = addStock(db, req.SKU, req.Quantity)
+    } else {
+        item, err = lookupItem(db, req.SKU)
+    }
+    if err != nil {
+        writeError(w, http.StatusInternalServerError, err.Error())
+        return
+    }
+
+    notifyExport()
+    writeJSON(w, http.StatusCreated, item)
 }

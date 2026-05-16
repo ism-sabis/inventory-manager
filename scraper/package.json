@@ -1,0 +1,36 @@
+{
+  "name": "web",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest --runInBand",
+    "test:work": "jest tests/work --runInBand",
+    "setup:browsers": "npx puppeteer browsers install chrome-headless-shell",
+    "check:types": "tsc --noEmit",
+    "check:test-discovery": "npm test -- --listTests",
+    "gobilda:run": "jest tests/robotics/GoBilda/gobildaInventoryScraper.test.ts --runInBand",
+    "gobilda:validate": "npm run check:types && npm run check:test-discovery"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@types/adm-zip": "^0.5.8",
+    "adm-zip": "^0.5.17",
+    "node-cron": "^4.2.1",
+    "nodemailer": "^8.0.6",
+    "puppeteer": "^24.6.1"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "^24.0.0",
+    "@types/node-cron": "^3.0.11",
+    "@types/nodemailer": "^8.0.0",
+    "@types/puppeteer": "^7.0.4",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.3.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  }
+}

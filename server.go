@@ -11,12 +11,19 @@ import (
 )
 
 var serveDir = flag.String("path", "web", "Directory to serve")
-var allowRemote = flag.Bool("remote", true, "Allow remote connections")
+var allowRemote = flag.Bool("remote", false, "Allow remote connections")
 var port = flag.Int("port", 8000, "Port to listen on")
 var dbPath = flag.String("db", "inventory.db", "Path to SQLite database file")
 var dataDir = flag.String("data", "data", "Directory for CSV data files")
 var doExport = flag.Bool("export", false, "Export database to CSV files and exit")
 var doImport = flag.Bool("import", false, "Import CSV files into database and exit")
+var gobildaRefreshOnly = flag.Bool("gobilda-refresh-only", false, "Refresh the goBILDA product catalog and exit")
+var gobildaRefreshOnStart = flag.Bool("gobilda-refresh", false, "Refresh the goBILDA product catalog before starting the server")
+var gobildaRefreshInterval = flag.Duration("gobilda-refresh-interval", 0, "How often to refresh the goBILDA product catalog")
+var gobildaScraperDir = flag.String("gobilda-scraper-dir", "scraper", "Directory containing the goBILDA scraper workspace")
+var gobildaScraperCommand = flag.String("gobilda-scraper-command", "", "Command to run in the scraper workspace before refreshing")
+var gobildaScraperArgs = flag.String("gobilda-scraper-args", "", "Arguments for the scraper command, separated by spaces")
+var gobildaResultsDir = flag.String("gobilda-results-dir", filepath.Join("scraper", "Results", "robotics", "GoBilda"), "Directory containing the latest goBILDA scraper result files")
 
 var exportChan chan struct{}
 
@@ -66,9 +73,19 @@ func main() {
 		return
 	}
 
+	if *gobildaRefreshOnly || *gobildaRefreshOnStart || *gobildaRefreshInterval > 0 {
+		if err := refreshGobildaCatalog(*dataDir, *gobildaResultsDir, *gobildaScraperDir, *gobildaScraperCommand, *gobildaScraperArgs); err != nil {
+			log.Fatal("goBILDA refresh failed: ", err)
+		}
+	}
+
 	// Always load products.csv on server startup
 	if err := loadProducts(db, *dataDir); err != nil {
 		log.Fatal("Error loading products: ", err)
+	}
+
+	if *gobildaRefreshOnly {
+		return
 	}
 
 	if *doExport {
@@ -79,6 +96,9 @@ func main() {
 	}
 
 	initAutoExport(*dataDir)
+	if *gobildaRefreshInterval > 0 {
+		initGobildaRefreshLoop(*dataDir, *gobildaResultsDir, *gobildaScraperDir, *gobildaScraperCommand, *gobildaScraperArgs, *gobildaRefreshInterval)
+	}
 
 	var bindAddr = fmt.Sprintf("127.0.0.1:%d", *port)
 	if *allowRemote {
@@ -103,6 +123,8 @@ func main() {
 	mux.HandleFunc("GET /api/orders/{id}", handleGetOrder)
 	mux.HandleFunc("POST /api/orders/receive", handleReceiveLine)
 	mux.HandleFunc("GET /ping", healthCheckHandler)
+	mux.HandleFunc("POST /api/admin/refresh", handleAdminRefresh)
+	mux.HandleFunc("POST /api/items/custom", handleCreateCustomProduct)
 	mux.Handle("/", http.FileServer(http.Dir(serveAbsDir)))
 
 	var hostname = "localhost"
@@ -114,5 +136,21 @@ func main() {
 	}
 
 	log.Print("binding http://", hostname, ":", *port, " to directory ", serveAbsDir)
-	log.Fatal(http.ListenAndServe(bindAddr, mux))
+	authHandler := basicAuth(mux)
+	log.Fatal(http.ListenAndServe(bindAddr, authHandler))
+}
+
+// basicAuth wraps a handler and requires HTTP Basic Auth for all requests.
+// Any username is accepted so long as the password matches the configured secret.
+func basicAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, pass, ok := r.BasicAuth()
+		if !ok || pass != "20037" {
+			w.Header().Set("WWW-Authenticate", `Basic realm="Inventory Manager"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte("Unauthorized"))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }

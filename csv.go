@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/csv"
 	"fmt"
+	"strings"
 	"log"
 	"os"
 	"path/filepath"
@@ -40,13 +41,50 @@ func loadProducts(db *sql.DB, dataDir string) error {
 		if sku == "" {
 			continue
 		}
-		if err := upsertProduct(db, sku, barcode, title, imageURL, productURL); err != nil {
+		// Try to infer pack size from title (e.g., "25 pack", "250 pk", "Pack of 25")
+		packSize := inferPackSizeFromTitle(title)
+		if err := upsertProduct(db, sku, barcode, title, imageURL, "", productURL, packSize); err != nil {
 			return fmt.Errorf("products.csv line %d: %w", i+2, err)
 		}
 	}
 	log.Printf("Loaded %d products from %s", len(records)-1, path)
 	return nil
 }
+
+func inferPackSizeFromTitle(title string) int {
+	// Look for patterns like "25 pack", "Pack of 25", "25pk", "25-pk" (case-insensitive)
+	t := strings.ToLower(title)
+	// common patterns
+	var num int
+	// try "pack of N" or "pack of N)"
+	if idx := strings.Index(t, "pack of "); idx != -1 {
+		rest := t[idx+8:]
+		fmt.Sscanf(rest, "%d", &num)
+		if num > 0 {
+			return num
+		}
+	}
+	// try "N pack" or "N-pack" or "Npk" or "N pk"
+	for i := 0; i < len(t); i++ {
+		// find digits
+		if t[i] >= '0' && t[i] <= '9' {
+			var val int
+			j := i
+			for j < len(t) && t[j] >= '0' && t[j] <= '9' {
+				val = val*10 + int(t[j]-'0')
+				j++
+			}
+			// check following text for pack indicators
+			suffix := strings.TrimSpace(t[j:min(len(t), j+6)])
+			if strings.HasPrefix(suffix, "pack") || strings.HasPrefix(suffix, "pk") || strings.HasPrefix(suffix, "pck") {
+				return val
+			}
+		}
+	}
+	return 0
+}
+
+func min(a, b int) int { if a < b { return a } ; return b }
 
 func importData(db *sql.DB, dataDir string) error {
 	if err := loadProducts(db, dataDir); err != nil {

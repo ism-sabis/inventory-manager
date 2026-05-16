@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"strings"
 
 	_ "modernc.org/sqlite"
@@ -12,9 +13,11 @@ type Item struct {
 	Barcode    string `json:"barcode"`
 	Title      string `json:"title"`
 	ImageURL   string `json:"image_url"`
+	Images     []string `json:"images,omitempty"`
 	ProductURL string `json:"product_url"`
 	Quantity   int    `json:"quantity"`
 	OnOrder    int    `json:"on_order"`
+	PackSize   int    `json:"pack_size"`
 	CreatedAt  string `json:"created_at"`
 	UpdatedAt  string `json:"updated_at"`
 }
@@ -46,13 +49,20 @@ type PurchaseOrderLine struct {
 	QuantityReceived int    `json:"quantity_received"`
 }
 
-const itemColumns = "sku, barcode, title, image_url, product_url, quantity, created_at, updated_at"
+const itemColumns = "sku, barcode, title, image_url, images, product_url, quantity, pack_size, created_at, updated_at"
 
 func scanItem(row interface{ Scan(...any) error }) (*Item, error) {
 	var item Item
-	err := row.Scan(&item.SKU, &item.Barcode, &item.Title, &item.ImageURL, &item.ProductURL, &item.Quantity, &item.CreatedAt, &item.UpdatedAt)
+	var imagesJSON string
+	err := row.Scan(&item.SKU, &item.Barcode, &item.Title, &item.ImageURL, &imagesJSON, &item.ProductURL, &item.Quantity, &item.PackSize, &item.CreatedAt, &item.UpdatedAt)
 	if err != nil {
 		return nil, err
+	}
+	if imagesJSON != "" {
+		var imgs []string
+		if err := json.Unmarshal([]byte(imagesJSON), &imgs); err == nil {
+			item.Images = imgs
+		}
 	}
 	return &item, nil
 }
@@ -89,6 +99,11 @@ func openDB(path string) (*sql.DB, error) {
 func migrate(db *sql.DB) error {
 	// Add action column to existing checkouts tables
 	db.Exec("ALTER TABLE checkouts ADD COLUMN action TEXT NOT NULL DEFAULT 'checkout'")
+	// Add custom column to track user-created products
+	db.Exec("ALTER TABLE items ADD COLUMN custom INTEGER NOT NULL DEFAULT 0")
+	// Add images and pack_size if missing
+	db.Exec("ALTER TABLE items ADD COLUMN images TEXT NOT NULL DEFAULT ''")
+	db.Exec("ALTER TABLE items ADD COLUMN pack_size INTEGER NOT NULL DEFAULT 0")
 
 	_, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS items (
@@ -96,8 +111,11 @@ func migrate(db *sql.DB) error {
 			barcode     TEXT NOT NULL DEFAULT '',
 			title       TEXT NOT NULL DEFAULT '',
 			image_url   TEXT NOT NULL DEFAULT '',
+			images      TEXT NOT NULL DEFAULT '',
 			product_url TEXT NOT NULL DEFAULT '',
 			quantity    INTEGER NOT NULL DEFAULT 0,
+			pack_size   INTEGER NOT NULL DEFAULT 0,
+			custom      INTEGER NOT NULL DEFAULT 0,
 			created_at  TEXT NOT NULL DEFAULT (datetime('now')),
 			updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
 		);
@@ -191,24 +209,53 @@ func searchItems(db *sql.DB, query string) ([]Item, error) {
 	return items, rows.Err()
 }
 
-func upsertProduct(db *sql.DB, sku, barcode, title, imageURL, productURL string) error {
+func upsertProduct(db *sql.DB, sku, barcode, title, imageURL, imagesJSON, productURL string, packSize int) error {
 	sku = strings.ToUpper(strings.TrimSpace(sku))
 	barcode = strings.ToUpper(strings.TrimSpace(barcode))
 	_, err := db.Exec(`
-		INSERT INTO items (sku, barcode, title, image_url, product_url)
-		VALUES (?, ?, ?, ?, ?)
+		INSERT INTO items (sku, barcode, title, image_url, images, product_url, pack_size)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(sku) DO UPDATE SET
 			barcode = CASE WHEN excluded.barcode = '' THEN items.barcode ELSE excluded.barcode END,
 			title = CASE WHEN excluded.title = '' THEN items.title ELSE excluded.title END,
 			image_url = CASE WHEN excluded.image_url = '' THEN items.image_url ELSE excluded.image_url END,
+			images = CASE WHEN excluded.images = '' THEN items.images ELSE excluded.images END,
 			product_url = CASE WHEN excluded.product_url = '' THEN items.product_url ELSE excluded.product_url END,
+			pack_size = CASE WHEN excluded.pack_size = 0 THEN items.pack_size ELSE excluded.pack_size END,
 			updated_at = CASE WHEN
 				items.barcode != (CASE WHEN excluded.barcode = '' THEN items.barcode ELSE excluded.barcode END) OR
 				items.title != (CASE WHEN excluded.title = '' THEN items.title ELSE excluded.title END) OR
 				items.image_url != (CASE WHEN excluded.image_url = '' THEN items.image_url ELSE excluded.image_url END) OR
-				items.product_url != (CASE WHEN excluded.product_url = '' THEN items.product_url ELSE excluded.product_url END)
+				items.product_url != (CASE WHEN excluded.product_url = '' THEN items.product_url ELSE excluded.product_url END) OR
+				items.pack_size != (CASE WHEN excluded.pack_size = 0 THEN items.pack_size ELSE excluded.pack_size END)
 			THEN datetime('now') ELSE items.updated_at END
-	`, sku, barcode, title, imageURL, productURL)
+	`, sku, barcode, title, imageURL, imagesJSON, productURL, packSize)
+	return err
+}
+
+// upsertCustomProduct is like upsertProduct but marks the item as custom (user-created, not from scraper)
+func upsertCustomProduct(db *sql.DB, sku, barcode, title, imageURL, imagesJSON, productURL string, packSize int) error {
+	sku = strings.ToUpper(strings.TrimSpace(sku))
+	barcode = strings.ToUpper(strings.TrimSpace(barcode))
+	_, err := db.Exec(`
+		INSERT INTO items (sku, barcode, title, image_url, images, product_url, pack_size, custom)
+		VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+		ON CONFLICT(sku) DO UPDATE SET
+			barcode = CASE WHEN excluded.barcode = '' THEN items.barcode ELSE excluded.barcode END,
+			title = CASE WHEN excluded.title = '' THEN items.title ELSE excluded.title END,
+			image_url = CASE WHEN excluded.image_url = '' THEN items.image_url ELSE excluded.image_url END,
+			images = CASE WHEN excluded.images = '' THEN items.images ELSE excluded.images END,
+			product_url = CASE WHEN excluded.product_url = '' THEN items.product_url ELSE excluded.product_url END,
+			pack_size = CASE WHEN excluded.pack_size = 0 THEN items.pack_size ELSE excluded.pack_size END,
+			custom = 1,
+			updated_at = CASE WHEN
+				items.barcode != (CASE WHEN excluded.barcode = '' THEN items.barcode ELSE excluded.barcode END) OR
+				items.title != (CASE WHEN excluded.title = '' THEN items.title ELSE excluded.title END) OR
+				items.image_url != (CASE WHEN excluded.image_url = '' THEN items.image_url ELSE excluded.image_url END) OR
+				items.product_url != (CASE WHEN excluded.product_url = '' THEN items.product_url ELSE excluded.product_url END) OR
+				items.pack_size != (CASE WHEN excluded.pack_size = 0 THEN items.pack_size ELSE excluded.pack_size END)
+			THEN datetime('now') ELSE items.updated_at END
+	`, sku, barcode, title, imageURL, imagesJSON, productURL, packSize)
 	return err
 }
 

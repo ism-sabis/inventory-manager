@@ -18,27 +18,68 @@
 
         .tabs {
             display: flex;
-            gap: 4px;
+            gap: 8px;
             margin-bottom: 20px;
+            position: sticky;
+            top: 12px;
+            z-index: 40;
+            background: rgba(20,20,20,0.6);
+            padding: 10px;
+            border-radius: 10px;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.6);
         }
         .tab-btn {
             flex: 1;
-            padding: 12px 4px;
-            background: #333;
-            color: #aaa;
-            border: 1px solid #555;
+            padding: 10px 8px;
+            background: linear-gradient(180deg,#222,#1b1b1b);
+            color: #dcdcdc;
+            border: 1px solid rgba(255,255,255,0.04);
             cursor: pointer;
-            font-size: 13px;
-            font-weight: bold;
+            font-size: 14px;
+            font-weight: 700;
+            border-radius: 8px;
+            transition: transform .08s ease, box-shadow .12s ease;
         }
         .tab-btn.active {
-            background: #1a73e8;
+            background: linear-gradient(180deg,#2b9fff,#1a73e8);
             color: #fff;
-            border-color: #1a73e8;
+            border-color: rgba(255,255,255,0.08);
+            box-shadow: 0 6px 18px rgba(26,115,232,0.18);
+            transform: translateY(-2px);
         }
 
         .tab-content { display: none; }
         .tab-content.active { display: block; }
+
+        /* help tooltip */
+        .help {
+            display: inline-flex;
+            width: 18px;
+            height: 18px;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.04);
+            color: #bbb;
+            margin-left: 8px;
+            font-size: 12px;
+            cursor: default;
+            user-select: none;
+        }
+        .tooltip {
+            position: fixed;
+            z-index: 9999;
+            background: #101216;
+            color: #eee;
+            padding: 8px 10px;
+            border-radius: 6px;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.6);
+            font-size: 13px;
+            max-width: 320px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity .12s ease;
+        }
 
         label {
             display: block;
@@ -126,6 +167,8 @@
         }
         th { color: #aaa; font-size: 13px; }
         td { font-size: 14px; }
+        th.sortable { cursor: pointer; user-select: none }
+        th .arrow { margin-left: 6px; font-size: 11px; color: #888 }
         .badge {
             display: inline-block;
             padding: 2px 8px;
@@ -164,19 +207,27 @@
     <h1>Inventory Manager</h1>
 
     <div class="tabs">
-        <button class="tab-btn active" data-tab="add" onclick="showTab('add')">Add</button>
-        <button class="tab-btn" data-tab="checkout" onclick="showTab('checkout')">Checkout</button>
-        <button class="tab-btn" data-tab="orders" onclick="showTab('orders')">Orders</button>
-        <button class="tab-btn" data-tab="inventory" onclick="showTab('inventory')">Inventory</button>
+        <button class="tab-btn active" data-tab="add" onclick="showTab('add')">Add<span class="help" data-help="Quickly add stock by scanning or entering SKU/barcode">?</span></button>
+        <button class="tab-btn" data-tab="product" onclick="showTab('product')">New<span class="help" data-help="Create a new product record with SKU, barcode, images and initial qty">?</span></button>
+        <button class="tab-btn" data-tab="checkout" onclick="showTab('checkout')">Out<span class="help" data-help="Checkout items for projects or consumption">?</span></button>
+        <button class="tab-btn" data-tab="orders" onclick="showTab('orders')">POs<span class="help" data-help="Create and receive purchase orders">?</span></button>
+        <button class="tab-btn" data-tab="inventory" onclick="showTab('inventory')">Stock<span class="help" data-help="Search and browse product catalog">?</span></button>
+        <button class="tab-btn" data-tab="settings" onclick="showTab('settings')">Tools<span class="help" data-help="Maintenance actions and configuration">?</span></button>
     </div>
 
     <!-- Add Items Tab -->
     <div id="tab-add" class="tab-content active">
+        <h2>Add Stock <span class="help" data-help="Add quantity to an existing SKU or barcode">?</span></h2>
         <form id="addForm">
             <label for="addSku">SKU or Barcode (scan)</label>
             <input type="text" id="addSku" name="sku" autocomplete="off" required>
             <label for="addQty">Quantity</label>
             <input type="number" id="addQty" name="quantity" min="1" value="1" required>
+            <label for="addUnitType">Unit Type</label>
+            <select id="addUnitType" name="unit_type">
+                <option value="individual">Individual</option>
+                <option value="pack">Pack</option>
+            </select>
             <button type="submit" class="btn">Add Stock</button>
         </form>
         <div id="addStatus" class="status"></div>
@@ -189,10 +240,33 @@
         </div>
     </div>
 
+    <!-- Add New Product Tab -->
+    <div id="tab-product" class="tab-content">
+        <h2>New Product <span class="help" data-help="Create a new product (SKU, barcode, images) and optional initial stock">?</span></h2>
+        <form id="customProductForm">
+            <label for="customSku">SKU *</label>
+            <input type="text" id="customSku" name="sku" autocomplete="off" required>
+            <label for="customBarcode">Barcode</label>
+            <input type="text" id="customBarcode" name="barcode" autocomplete="off">
+            <label for="customTitle">Title *</label>
+            <input type="text" id="customTitle" name="title" autocomplete="off" required>
+            <label for="customProductUrl">Product URL</label>
+            <input type="text" id="customProductUrl" name="product_url" autocomplete="off" placeholder="https://...">
+            <label for="customImages">Images (URLs, one per line)</label>
+            <textarea id="customImages" name="images" placeholder="https://...\nhttps://..." style="background:#333;color:#fff;border:1px solid #555;padding:12px;font-size:14px;width:100%;min-height:80px;font-family:monospace"></textarea>
+            <label for="customQty">Initial Quantity</label>
+            <input type="number" id="customQty" name="quantity" min="0" value="0">
+            <label for="customPackSize">Pack size (optional)</label>
+            <input type="number" id="customPackSize" name="pack_size" min="0" value="0" placeholder="e.g. 25 for a 25-pack">
+            <button type="submit" class="btn">Add New Product</button>
+        </form>
+        <div id="customProductStatus" class="status"></div>
+    </div>
+
     <!-- Checkout Tab -->
     <div id="tab-checkout" class="tab-content">
         <form id="lookupForm">
-            <label for="checkoutSku">SKU or Barcode (scan)</label>
+            <label for="checkoutSku">SKU or Barcode (scan) <span class="help" data-help="Scan or type to find the item to checkout">?</span></label>
             <input type="text" id="checkoutSku" name="sku" autocomplete="off" required>
             <button type="submit" class="btn">Look Up Item</button>
         </form>
@@ -200,6 +274,7 @@
             <p class="item-title" id="checkoutDetailTitle"></p>
             <p class="item-sku" id="checkoutDetailSku"></p>
             <img id="checkoutDetailImg" src="" alt="" style="display:none">
+            <p id="checkoutDetailLink" style="display:none;margin-top:8px"><a id="checkoutDetailLinkEl" href="" target="_blank" style="color:#1a73e8;text-decoration:none">View Product</a></p>
             <p>On hand: <span class="qty" id="checkoutDetailQty"></span></p>
             <p class="on-order" id="checkoutDetailOnOrder" style="display:none"></p>
         </div>
@@ -238,22 +313,86 @@
 
     <!-- Inventory Tab -->
     <div id="tab-inventory" class="tab-content">
-        <form id="searchForm">
-            <label for="searchSku">Search by SKU, barcode, or title</label>
-            <input type="text" id="searchSku" name="q" autocomplete="off" placeholder="Leave empty to show all">
-            <button type="submit" class="btn">Search</button>
-        </form>
+        <div id="searchBar" style="border:1px solid #333;padding:12px;border-radius:8px;background:linear-gradient(180deg,#161616,#1e1e1e);margin-bottom:12px;display:flex;gap:8px;align-items:center">
+            <label for="searchSku" style="flex:0 0 auto;margin-right:6px;color:#ddd">Search</label>
+            <input type="text" id="searchSku" name="q" autocomplete="off" placeholder="SKU, barcode, or title" style="flex:1">
+            <button id="searchClear" class="btn btn-sm" style="width:auto;padding:8px 10px;margin:0">Clear</button>
+            <div style="color:#aaa;font-size:12px;margin-top:6px">Searching as you type — no button required.</div>
+        </div>
+        <h2 style="margin-top:0;color:#ddd">Products</h2>
         <table id="inventoryTable" style="display:none">
             <thead>
-                <tr><th>SKU</th><th>Title</th><th>Qty</th><th>On Order</th></tr>
+                <tr>
+                    <th class="sortable" data-sort="sku">SKU <span class="arrow" id="arrow-sku">↕</span></th>
+                    <th class="sortable" data-sort="title">Title <span class="arrow" id="arrow-title">↕</span></th>
+                    <th class="sortable" data-sort="quantity">Quantity <span class="arrow" id="arrow-quantity">↕</span></th>
+                </tr>
             </thead>
             <tbody id="inventoryBody"></tbody>
         </table>
         <div id="searchStatus" class="status"></div>
+        <div id="inventoryModal" style="display:none"></div>
+    </div>
+
+    <!-- Settings Tab -->
+    <div id="tab-settings" class="tab-content">
+        <h2>Settings</h2>
+        <p style="color:#aaa;margin-top:8px">Manual maintenance actions.</p>
+        <button id="refreshBtn" class="btn">Refresh Products (run scraper & update)</button>
+        <div id="refreshStatus" class="status" style="margin-top:12px"></div>
+        <p style="color:#aaa;margin-top:8px;font-size:13px">Note: the refresh runs asynchronously. The server will reload products without restarting.</p>
     </div>
 </div>
 
 <script>
+// Simple auth handling for API calls
+let authPassword = sessionStorage.getItem('authPassword') || '20037';
+if (!sessionStorage.getItem('authPassword')) {
+    try {
+        const pwd = prompt('Enter password:', '20037');
+        if (pwd) {
+            authPassword = pwd;
+            sessionStorage.setItem('authPassword', pwd);
+        }
+    } catch (e) {
+        // prompt not available; use default
+        authPassword = '20037';
+        sessionStorage.setItem('authPassword', authPassword);
+    }
+}
+
+// Helper to make authenticated fetch calls
+async function authFetch(url, options = {}) {
+    const headers = options.headers || {};
+    headers['Authorization'] = 'Basic ' + btoa(':' + authPassword);
+    return fetch(url, { ...options, headers });
+}
+
+// Simple debounce
+function debounce(fn, wait) {
+    let t;
+    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), wait); };
+}
+
+// Resolve a code (SKU or barcode) by searching — returns first matching item or null
+async function resolveCode(code) {
+    if (!code) return null;
+    const resp = await authFetch('/api/items?q=' + encodeURIComponent(code));
+    if (!resp.ok) return null;
+    const items = await resp.json();
+    if (items && items.length > 0) return items[0];
+    return null;
+}
+
+// Prevent Enter from auto-submitting scanner inputs
+function preventEnterAutoSubmit(el) {
+    el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+        }
+    });
+}
+
 function showTab(name) {
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.tab === name);
@@ -262,6 +401,7 @@ function showTab(name) {
     document.getElementById('tab-' + name).classList.add('active');
 
     if (name === 'add') document.getElementById('addSku').focus();
+    if (name === 'product') document.getElementById('customSku').focus();
     if (name === 'checkout') document.getElementById('checkoutSku').focus();
     if (name === 'orders') loadOrders();
     if (name === 'inventory') {
@@ -288,14 +428,22 @@ function showItemDetail(prefix, item) {
     } else {
         img.style.display = 'none';
     }
+    const linkEl = document.getElementById(prefix + 'DetailLink');
+    if (linkEl && item.product_url) {
+        linkEl.style.display = 'block';
+        const link = document.getElementById(prefix + 'DetailLinkEl');
+        link.href = item.product_url;
+    } else if (linkEl) {
+        linkEl.style.display = 'none';
+    }
     const qtyEl = document.getElementById(prefix + 'DetailQty');
     qtyEl.textContent = item.quantity;
     qtyEl.className = 'qty' + (item.quantity < 0 ? ' negative' : '');
     const onOrderEl = document.getElementById(prefix + 'DetailOnOrder');
-    if (item.on_order > 0) {
+    if (onOrderEl && item.on_order > 0) {
         onOrderEl.textContent = 'On order: ' + item.on_order + ' (expected total: ' + (item.quantity + item.on_order) + ')';
         onOrderEl.style.display = 'block';
-    } else {
+    } else if (onOrderEl) {
         onOrderEl.style.display = 'none';
     }
     document.getElementById(prefix + 'Detail').classList.add('visible');
@@ -308,10 +456,19 @@ document.getElementById('addForm').addEventListener('submit', async (e) => {
     const code = form.sku.value.trim();
     if (!code) return;
     try {
-        const resp = await fetch('/api/items', {
+        // If user selected pack, try to resolve pack size and convert to individuals
+        const unitType = document.getElementById('addUnitType').value;
+        let qty = parseInt(form.quantity.value) || 1;
+        if (unitType === 'pack') {
+            const item = await resolveCode(code);
+            if (item && item.pack_size && item.pack_size > 0) {
+                qty = qty * item.pack_size;
+            }
+        }
+        const resp = await authFetch('/api/items', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ sku: code, quantity: parseInt(form.quantity.value) || 1 })
+            body: JSON.stringify({ sku: code, quantity: qty })
         });
         const data = await resp.json();
         if (!resp.ok) { showStatus('addStatus', data.error, true); return; }
@@ -324,6 +481,8 @@ document.getElementById('addForm').addEventListener('submit', async (e) => {
         showStatus('addStatus', 'Network error', true);
     }
 });
+// Prevent Enter auto-submit on scanner field
+preventEnterAutoSubmit(document.getElementById('addSku'));
 
 // Checkout — Phase 1: Lookup
 let checkoutItemSku = '';
@@ -332,13 +491,18 @@ document.getElementById('lookupForm').addEventListener('submit', async (e) => {
     const code = e.target.sku.value.trim();
     if (!code) return;
     try {
-        const resp = await fetch('/api/items/' + encodeURIComponent(code));
-        const data = await resp.json();
+        // Try exact lookup, fallback to search
+        let resp = await authFetch('/api/items/' + encodeURIComponent(code));
+        let data = await resp.json();
         if (!resp.ok) {
-            showStatus('checkoutStatus', data.error, true);
-            document.getElementById('checkoutForm').style.display = 'none';
-            document.getElementById('checkoutDetail').classList.remove('visible');
-            return;
+            const found = await resolveCode(code);
+            if (!found) {
+                showStatus('checkoutStatus', data.error || 'item not found', true);
+                document.getElementById('checkoutForm').style.display = 'none';
+                document.getElementById('checkoutDetail').classList.remove('visible');
+                return;
+            }
+            data = found;
         }
         checkoutItemSku = data.sku;
         showItemDetail('checkout', data);
@@ -351,6 +515,8 @@ document.getElementById('lookupForm').addEventListener('submit', async (e) => {
         showStatus('checkoutStatus', 'Network error', true);
     }
 });
+// Prevent Enter auto-submit on checkout scanner field
+preventEnterAutoSubmit(document.getElementById('checkoutSku'));
 
 // Checkout — Phase 2: Confirm
 document.getElementById('checkoutForm').addEventListener('submit', async (e) => {
@@ -360,7 +526,7 @@ document.getElementById('checkoutForm').addEventListener('submit', async (e) => 
     const project = form.project.value.trim();
     if (!project) { showStatus('checkoutStatus', 'Project is required', true); return; }
     try {
-        const resp = await fetch('/api/checkout', {
+        const resp = await authFetch('/api/checkout', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ sku: checkoutItemSku, quantity: qty, project: project })
@@ -400,7 +566,7 @@ document.getElementById('newOrderForm').addEventListener('submit', async (e) => 
     });
     if (!name || lines.length === 0) return;
     try {
-        const resp = await fetch('/api/orders', {
+        const resp = await authFetch('/api/orders', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ name, lines })
@@ -422,7 +588,7 @@ document.getElementById('newOrderForm').addEventListener('submit', async (e) => 
 // Orders — List and Receive
 async function loadOrders() {
     try {
-        const resp = await fetch('/api/orders?status=open');
+        const resp = await authFetch('/api/orders?status=open');
         const orders = await resp.json();
         const container = document.getElementById('ordersList');
         container.innerHTML = '';
@@ -431,7 +597,7 @@ async function loadOrders() {
             return;
         }
         for (const order of orders) {
-            const detailResp = await fetch('/api/orders/' + order.id);
+            const detailResp = await authFetch('/api/orders/' + order.id);
             const full = await detailResp.json();
             const card = document.createElement('div');
             card.className = 'order-card';
@@ -457,7 +623,7 @@ async function loadOrders() {
 
 async function receiveLine(lineId, quantity) {
     try {
-        const resp = await fetch('/api/orders/receive', {
+        const resp = await authFetch('/api/orders/receive', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ line_id: lineId, quantity: quantity })
@@ -477,42 +643,275 @@ async function receiveLine(lineId, quantity) {
 async function loadInventory() {
     const q = document.getElementById('searchSku').value.trim();
     try {
-        const resp = await fetch('/api/items?q=' + encodeURIComponent(q));
+        const resp = await authFetch('/api/items?q=' + encodeURIComponent(q));
         const items = await resp.json();
-        const tbody = document.getElementById('inventoryBody');
-        tbody.innerHTML = '';
-        if (items.length === 0) {
-            showStatus('searchStatus', 'No items found', true);
-            document.getElementById('inventoryTable').style.display = 'none';
-            return;
-        }
+        window.inventoryItems = items || [];
         document.getElementById('searchStatus').className = 'status';
-        items.forEach(item => {
-            const tr = document.createElement('tr');
-            const qtyClass = item.quantity < 0 ? ' class="negative"' : '';
-            const onOrder = item.on_order > 0 ? item.on_order : '';
-            tr.innerHTML = '<td>' + esc(item.sku) + '</td><td>' + esc(item.title || '') +
-                '</td><td' + qtyClass + '>' + item.quantity + '</td><td>' + onOrder + '</td>';
-            tbody.appendChild(tr);
-        });
-        document.getElementById('inventoryTable').style.display = 'table';
+        renderInventory();
     } catch (err) {
         showStatus('searchStatus', 'Network error', true);
     }
 }
 
-document.getElementById('searchForm').addEventListener('submit', (e) => {
-    e.preventDefault();
-    loadInventory();
+// Current sort state
+window.inventorySort = { key: 'sku', dir: 'asc' };
+
+function renderInventory() {
+    const tbody = document.getElementById('inventoryBody');
+    tbody.innerHTML = '';
+    const items = (window.inventoryItems || []).slice();
+    const sortKey = window.inventorySort.key;
+    const dir = window.inventorySort.dir === 'asc' ? 1 : -1;
+    items.sort((a, b) => {
+        let va = a[sortKey] || '';
+        let vb = b[sortKey] || '';
+        if (sortKey === 'quantity') {
+            return dir * ( (a.quantity||0) - (b.quantity||0) );
+        }
+        va = String(va).toUpperCase();
+        vb = String(vb).toUpperCase();
+        if (va < vb) return -1 * dir;
+        if (va > vb) return 1 * dir;
+        return 0;
+    });
+    if (items.length === 0) {
+        showStatus('searchStatus', 'No items found', true);
+        document.getElementById('inventoryTable').style.display = 'none';
+        return;
+    }
+    document.getElementById('searchStatus').className = 'status';
+    for (const item of items) {
+        const tr = document.createElement('tr');
+        const qtyClass = item.quantity < 0 ? ' class="negative"' : '';
+        tr.innerHTML = '<td>' + esc(item.sku) + '</td><td>' + esc(item.title || '') + '</td><td' + qtyClass + '>' + item.quantity + '</td>';
+        tr.style.cursor = 'pointer';
+        tr.addEventListener('click', () => openInventoryModal(item));
+        tbody.appendChild(tr);
+    }
+    document.getElementById('inventoryTable').style.display = 'table';
+}
+
+// Sorting header handlers
+document.querySelectorAll('th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+        const key = th.dataset.sort;
+        if (window.inventorySort.key === key) {
+            window.inventorySort.dir = window.inventorySort.dir === 'asc' ? 'desc' : 'asc';
+        } else {
+            window.inventorySort.key = key;
+            window.inventorySort.dir = 'asc';
+        }
+        document.querySelectorAll('th .arrow').forEach(a => a.textContent = '↕');
+        const arrow = document.getElementById('arrow-' + key);
+        arrow.textContent = window.inventorySort.dir === 'asc' ? '▲' : '▼';
+        renderInventory();
+    });
 });
 
+// Live search as you type
+document.getElementById('searchSku').addEventListener('input', debounce(() => loadInventory(), 250));
+
+// Escape HTML for safe insertion into the DOM
 function esc(str) {
     const d = document.createElement('div');
-    d.textContent = str;
+    d.textContent = str == null ? '' : String(str);
     return d.innerHTML;
 }
 
 window.addEventListener('load', () => document.getElementById('addSku').focus());
+
+// Tooltip handling for small '?' elements
+const tooltip = document.createElement('div');
+tooltip.className = 'tooltip';
+document.body.appendChild(tooltip);
+document.querySelectorAll('.help').forEach(h => {
+    h.addEventListener('mouseenter', (ev) => {
+        const txt = h.dataset.help || '';
+        tooltip.innerHTML = txt;
+        const r = h.getBoundingClientRect();
+        tooltip.style.left = (r.left + window.scrollX) + 'px';
+        tooltip.style.top = (r.bottom + window.scrollY + 8) + 'px';
+        tooltip.style.opacity = '1';
+    });
+    h.addEventListener('mouseleave', () => { tooltip.style.opacity = '0'; });
+});
+
+// Keyboard shortcuts: Alt+1..6 to switch tabs, or 1..6
+window.addEventListener('keydown', (e) => {
+    if (e.altKey || !e.ctrlKey && !e.metaKey) {
+        const key = e.key;
+        if (!isNaN(parseInt(key))) {
+            const idx = parseInt(key);
+            if (idx >=1 && idx <=6) {
+                const tabs = ['add','product','checkout','orders','inventory','settings'];
+                showTab(tabs[idx-1]);
+            }
+        }
+    }
+});
+
+// Clear search button
+const searchClear = document.getElementById('searchClear');
+if (searchClear) searchClear.addEventListener('click', () => { document.getElementById('searchSku').value = ''; loadInventory(); document.getElementById('searchSku').focus(); });
+
+// Custom Product Form
+document.getElementById('customProductForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const imagesText = form.images.value.trim();
+    const images = imagesText ? imagesText.split('\n').map(s => s.trim()).filter(s => s) : [];
+    
+    const payload = {
+        sku: form.sku.value.trim(),
+        barcode: form.barcode.value.trim(),
+        title: form.title.value.trim(),
+        images: images,
+        product_url: form.product_url.value.trim(),
+        quantity: parseInt(form.quantity.value) || 0,
+        pack_size: parseInt(form.pack_size ? form.pack_size.value : document.getElementById('customPackSize').value) || 0
+    };
+    if (!payload.sku || !payload.title) {
+        showStatus('customProductStatus', 'SKU and Title are required', true);
+        return;
+    }
+    try {
+        const resp = await authFetch('/api/items/custom', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        if (!resp.ok) { showStatus('customProductStatus', data.error, true); return; }
+        showStatus('customProductStatus', 'Added new product: ' + data.sku);
+        form.reset();
+        form.sku.focus();
+    } catch (err) {
+        showStatus('customProductStatus', 'Network error', true);
+    }
+});
+
+// Settings: manual refresh
+const refreshBtn = document.getElementById('refreshBtn');
+if (refreshBtn) {
+    refreshBtn.addEventListener('click', async () => {
+        refreshBtn.disabled = true;
+        document.getElementById('refreshStatus').className = 'status';
+        try {
+            const resp = await authFetch('/api/admin/refresh', { method: 'POST' });
+            if (resp.status === 202) {
+                document.getElementById('refreshStatus').textContent = 'Refresh started';
+                document.getElementById('refreshStatus').className = 'status success';
+            } else {
+                const data = await resp.json();
+                document.getElementById('refreshStatus').textContent = data.error || 'Unexpected response';
+                document.getElementById('refreshStatus').className = 'status error';
+            }
+        } catch (err) {
+            document.getElementById('refreshStatus').textContent = 'Network error';
+            document.getElementById('refreshStatus').className = 'status error';
+        } finally {
+            setTimeout(() => { refreshBtn.disabled = false; }, 2000);
+        }
+    });
+}
+
+// Inventory modal gallery
+function openInventoryModal(item) {
+    const modal = document.getElementById('inventoryModal');
+    modal.innerHTML = '';
+    modal.style.display = 'block';
+    modal.style.position = 'fixed';
+    modal.style.left = '0';
+    modal.style.top = '0';
+    modal.style.width = '100%';
+    modal.style.height = '100%';
+    modal.style.background = 'rgba(0,0,0,0.6)';
+    modal.style.zIndex = '1000';
+    modal.style.overflow = 'auto';
+
+    const content = document.createElement('div');
+    content.style.background = '#111';
+    content.style.maxWidth = '900px';
+    content.style.margin = '6% auto';
+    content.style.padding = '20px';
+    content.style.border = '1px solid #333';
+    content.style.borderRadius = '6px';
+    content.tabIndex = -1;
+
+    const title = document.createElement('h2');
+    title.style.marginTop = '0';
+    title.textContent = item.title || item.sku;
+    content.appendChild(title);
+
+    const meta = document.createElement('p');
+    meta.style.color = '#aaa';
+    meta.textContent = item.sku + (item.barcode ? ' / ' + item.barcode : '');
+    content.appendChild(meta);
+
+    const imgs = (item.images && item.images.length) ? item.images.slice() : (item.image_url ? [item.image_url] : []);
+    let idx = 0;
+    const gallery = document.createElement('div');
+    gallery.style.position = 'relative';
+    gallery.style.textAlign = 'center';
+
+    const imgEl = document.createElement('img');
+    imgEl.src = imgs[0] || '';
+    imgEl.style.maxWidth = '100%';
+    imgEl.style.maxHeight = '60vh';
+    imgEl.style.border = '1px solid #333';
+    imgEl.style.transition = 'transform 0.2s ease';
+    gallery.appendChild(imgEl);
+
+    const controls = document.createElement('div');
+    controls.style.marginTop = '8px';
+    const prev = document.createElement('button'); prev.textContent = '◀ Prev'; prev.className = 'btn btn-sm';
+    const next = document.createElement('button'); next.textContent = 'Next ▶'; next.className = 'btn btn-sm';
+    const zoom = document.createElement('button'); zoom.textContent = 'Zoom'; zoom.className = 'btn btn-sm';
+    prev.addEventListener('click', () => {
+        if (imgs.length === 0) return; idx = (idx - 1 + imgs.length) % imgs.length; imgEl.src = imgs[idx];
+    });
+    next.addEventListener('click', () => {
+        if (imgs.length === 0) return; idx = (idx + 1) % imgs.length; imgEl.src = imgs[idx];
+    });
+    let zoomed = false;
+    zoom.addEventListener('click', () => { zoomed = !zoomed; imgEl.style.transform = zoomed ? 'scale(2)' : 'scale(1)'; });
+    controls.appendChild(prev); controls.appendChild(next); controls.appendChild(zoom);
+    gallery.appendChild(controls);
+    content.appendChild(gallery);
+
+    if (item.product_url) {
+        const link = document.createElement('p'); link.style.marginTop = '12px';
+        link.innerHTML = '<a href="' + esc(item.product_url) + '" target="_blank" style="color:#1a73e8">View Product →</a>';
+        content.appendChild(link);
+    }
+
+    const qty = document.createElement('p'); qty.innerHTML = 'On hand: <strong>' + (item.quantity||0) + '</strong>';
+    content.appendChild(qty);
+    if (item.on_order && item.on_order > 0) {
+        const oo = document.createElement('p'); oo.style.color = '#64b5f6'; oo.textContent = 'On order: ' + item.on_order;
+        content.appendChild(oo);
+    }
+
+    const close = document.createElement('button'); close.textContent = 'Close'; close.className = 'btn btn-sm btn-red';
+    close.style.marginTop = '12px';
+    close.addEventListener('click', closeModal);
+    content.appendChild(close);
+
+    modal.appendChild(content);
+
+    // Close when clicking outside
+    modal.addEventListener('click', function onOuterClick(ev) {
+        if (ev.target === modal) closeModal();
+    });
+    // Close on escape
+    function onEsc(ev) { if (ev.key === 'Escape') closeModal(); }
+    document.addEventListener('keydown', onEsc);
+
+    function closeModal() {
+        modal.style.display = 'none'; modal.innerHTML = '';
+        document.removeEventListener('keydown', onEsc);
+    }
+}
 </script>
 
 </body>
