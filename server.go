@@ -105,7 +105,14 @@ func main() {
 		bindAddr = fmt.Sprintf(":%d", *port)
 	}
 
-	var serveAbsDir, err = filepath.Abs(*serveDir)
+	// Prefer built frontend in web/dist when present so the Go server can serve the React app's build output.
+	finalServe := *serveDir
+	if *serveDir == "web" {
+		if _, statErr := os.Stat(filepath.Join("web", "dist")); statErr == nil {
+			finalServe = filepath.Join("web", "dist")
+		}
+	}
+	var serveAbsDir, err = filepath.Abs(finalServe)
 	if err != nil {
 		log.Fatal("Error resolving absolute path", err)
 	}
